@@ -151,7 +151,7 @@ defmodule HTTPoison.Base do
       def request(method, url, body \\ "", headers \\ [], options \\ []) do
         url =
         if Keyword.has_key?(options, :params) do
-          url <> "?" <> URI.encode_query(options[:params])
+          url <> "?" <> encode_query(options[:params])
         else
           url
         end
@@ -159,6 +159,28 @@ defmodule HTTPoison.Base do
         body = process_request_body(body)
         headers = process_request_headers(headers)
         HTTPoison.Base.request(__MODULE__, method, url, body, headers, options, &process_status_code/1, &process_headers/1, &process_response_body/1)
+      end
+
+      defp encode_query(enumerable) do
+        Enum.map_join(enumerable, "&", fn (pair) -> encode_kv_pair("", pair, false) end)
+      end
+
+      defp encode_kv_pair(_, {key, _}, _) when is_list(key) do
+        raise ArgumentError, "encode_query/1 keys cannot be lists, got: #{inspect key}"
+      end
+      defp encode_kv_pair(prefix, {key, values}, _) when is_list(values) or is_map(values) do
+        Enum.map_join(values, "&", fn (value) -> encode_kv_pair(prefix, {key, value}, true) end)
+      end
+      defp encode_kv_pair(prefix, {key, {nested_key, value}}, _) do
+        encode_kv_pair(prefix <> URI.encode_www_form(Kernel.to_string(key)), {"[" <> Kernel.to_string(nested_key) <> "]", value}, false)
+      end
+      defp encode_kv_pair(prefix, {key, value}, true) do
+        prefix <> URI.encode_www_form(Kernel.to_string(key)) <>
+          "%5B%5D=" <> URI.encode_www_form(Kernel.to_string(value))
+      end
+      defp encode_kv_pair(prefix, {key, value}, _) do
+        prefix <> URI.encode_www_form(Kernel.to_string(key)) <>
+          "=" <> URI.encode_www_form(Kernel.to_string(value))
       end
 
       @doc """
